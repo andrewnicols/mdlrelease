@@ -784,6 +784,21 @@ for branch in ${branches[@]};
         fi
     fi
 
+    # Determine if we need to push this branch up to the integration server.
+    newcommits=`git rev-list HEAD...origin/$branch --ignore-submodules --count`
+
+    if (( $newcommits > 0 )) || $_forcebump ; then
+        # Bump the version file.
+        output "  - Bumping version."
+        if bump_version "$branch" "$_type" "$pwd" "$_rc" "$_date" "$isdevbranch"; then
+            # Yay it worked!
+            if [ "$isdevbranch" ] && [ "$_type" == "major" ] ; then
+                output "  - Don't forget to read the notes."
+            fi
+            versionbumphash=`git rev-parse HEAD`
+        fi
+    fi
+
     # Now generate the upgrade notes.
     if $upgradenotes ; then
         output "  - Generating upgrade notes..."
@@ -797,19 +812,14 @@ for branch in ${branches[@]};
             # Make sure everything is clean again.
             all_clean
             output "    ${Y}Upgrade notes generated as required.${N}"
-        fi
-    fi
 
-    # Determine if we need to push this branch up to the integration server.
-    newcommits=`git rev-list HEAD...origin/$branch --ignore-submodules --count`
+            postnotesnewcommits=`git rev-list HEAD...origin/$branch --ignore-submodules --count`
 
-    if (( $newcommits > 0 )) || $_forcebump ; then
-        # Bump the version file.
-        output "  - Bumping version."
-        if bump_version "$branch" "$_type" "$pwd" "$_rc" "$_date" "$isdevbranch"; then
-            # Yay it worked!
-            if [ "$isdevbranch" ] && [ "$_type" == "major" ] ; then
-                output "  - Don't forget to read the notes."
+            if (( $postnotesnewcommits > $newcommits )) ; then
+                upgradenotehash=`git rev-parse HEAD`
+                git reset --hard --quiet $versionbumphash~
+                git cherry-pick $upgradenotehash --quiet
+                git cherry-pick $versionbumphash --quiet
             fi
         fi
     fi
